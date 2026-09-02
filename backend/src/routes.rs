@@ -97,9 +97,7 @@ pub fn msg(message: &str) -> Value {
     json!({ "message": message })
 }
 
-// The status parameter exists to mirror the Go signature; the payload never
-// carries it (matching the frontend's expectations).
-pub fn fail(_status: u16, message: &str) -> Value {
+pub fn fail(message: &str) -> Value {
     json!({ "success": false, "message": message })
 }
 
@@ -110,7 +108,7 @@ pub fn respond_500(context: &str, err: impl std::fmt::Display, with_success: boo
     if with_success {
         respond(
             StatusCode::INTERNAL_SERVER_ERROR,
-            fail(500, "Internal server error"),
+            fail("Internal server error"),
         )
     } else {
         respond(
@@ -137,7 +135,7 @@ pub fn is_unique_violation(err: &sqlx::Error) -> bool {
 // A logged-in user. Extracting this in a handler IS the auth check (the port
 // of requireAuth) — token verification, user lookup, verification flag, and
 // the onboarding gates all run here.
-#[derive(Clone, sqlx::FromRow)]
+#[derive(sqlx::FromRow)]
 pub struct AuthUser {
     pub id: i32,
     pub email: String,
@@ -198,14 +196,17 @@ impl FromRequestParts<AppState> for AuthUser {
         // Gates only need to know a profile exists, not its contents — routes
         // that need the full row (GET /api/profile) fetch it themselves.
         let route = format!("{} {}", parts.method, parts.uri.path());
-        if !onboarding_exempt(&route) {
-            // A logged-in user can be mid-onboarding — temp password not yet
-            // changed, registration details not yet filled in, possibly both
-            // at once. Each gate owns its own clearing route(s), always
-            // exempt from every gate (not just its own) so a user working
-            // through one gate can still reach the other's route — enforced
-            // here so the frontend redirect isn't the only thing stopping a
-            // temp password or empty profile from driving the API.
+        // A logged-in user can be mid-onboarding — temp password not yet
+        // changed, registration details not yet filled in, possibly both at
+        // once. Each gate owns its own clearing route(s), always exempt from
+        // every gate (not just its own) so a user working through one gate can
+        // still reach the other's route — enforced here so the frontend
+        // redirect isn't the only thing stopping a temp password or empty
+        // profile from driving the API.
+        if !matches!(
+            route.as_str(),
+            "GET /api/me" | "POST /api/change-password" | "GET /api/profile" | "POST /api/profile"
+        ) {
             if user.must_change_password {
                 return Err(respond(
                     StatusCode::FORBIDDEN,
@@ -221,13 +222,6 @@ impl FromRequestParts<AppState> for AuthUser {
         }
         Ok(user)
     }
-}
-
-fn onboarding_exempt(route: &str) -> bool {
-    matches!(
-        route,
-        "GET /api/me" | "POST /api/change-password" | "GET /api/profile" | "POST /api/profile"
-    )
 }
 
 // Shared by role-gated handlers (users.rs, Phase 4): 403s unless the user's

@@ -222,10 +222,10 @@ pub async fn me(user: crate::routes::AuthUser) -> Response {
 pub async fn signup(State(state): State<AppState>, body: Bytes) -> Response {
     let body: SignupBody = decode(&body);
     if !validate_email(&body.email) {
-        return respond(StatusCode::BAD_REQUEST, fail(400, "Invalid email address"));
+        return respond(StatusCode::BAD_REQUEST, fail("Invalid email address"));
     }
     if let Some(password_error) = validate_password(&body.password) {
-        return respond(StatusCode::BAD_REQUEST, fail(400, &password_error));
+        return respond(StatusCode::BAD_REQUEST, fail(&password_error));
     }
 
     // Atomic: user + welcome-email row together, so a failed email never
@@ -253,7 +253,7 @@ pub async fn signup(State(state): State<AppState>, body: Bytes) -> Response {
             eprintln!("[signup] rejected: email already registered (email={})", body.email);
             return respond(
                 StatusCode::BAD_REQUEST,
-                fail(400, "Unable to sign up. Please try again later."),
+                fail("Unable to sign up. Please try again later."),
             );
         }
         return respond_500("Signup Error", err, true);
@@ -285,7 +285,7 @@ pub async fn verify(State(state): State<AppState>, Query(query): Query<VerifyQue
     if token.is_empty() {
         return respond(
             StatusCode::BAD_REQUEST,
-            fail(400, "Missing verification token"),
+            fail("Missing verification token"),
         );
     }
     let id: Option<i32> =
@@ -300,7 +300,7 @@ pub async fn verify(State(state): State<AppState>, Query(query): Query<VerifyQue
     let Some(id) = id else {
         return respond(
             StatusCode::BAD_REQUEST,
-            fail(400, "Invalid or expired verification link"),
+            fail("Invalid or expired verification link"),
         );
     };
     if let Err(err) = sqlx::query(
@@ -321,7 +321,7 @@ pub async fn verify(State(state): State<AppState>, Query(query): Query<VerifyQue
 pub async fn resend_verification(State(state): State<AppState>, body: Bytes) -> Response {
     let body: EmailBody = decode(&body);
     if !validate_email(&body.email) {
-        return respond(StatusCode::BAD_REQUEST, fail(400, "Invalid email address"));
+        return respond(StatusCode::BAD_REQUEST, fail("Invalid email address"));
     }
     let row: Result<Option<(i32, bool)>, _> =
         sqlx::query_as("SELECT id, email_verified FROM users WHERE email = $1")
@@ -350,7 +350,7 @@ pub async fn resend_verification(State(state): State<AppState>, body: Bytes) -> 
 pub async fn forgot_password(State(state): State<AppState>, body: Bytes) -> Response {
     let body: EmailBody = decode(&body);
     if !validate_email(&body.email) {
-        return respond(StatusCode::BAD_REQUEST, fail(400, "Invalid email address"));
+        return respond(StatusCode::BAD_REQUEST, fail("Invalid email address"));
     }
     // No such user: fall through to the generic response (P2025 equivalent).
     if let Err(err) = queue::queue_password_reset(
@@ -378,10 +378,10 @@ pub async fn forgot_password(State(state): State<AppState>, body: Bytes) -> Resp
 pub async fn reset_password(State(state): State<AppState>, body: Bytes) -> Response {
     let body: ResetPasswordBody = decode(&body);
     if body.token.is_empty() {
-        return respond(StatusCode::BAD_REQUEST, fail(400, "Missing reset token"));
+        return respond(StatusCode::BAD_REQUEST, fail("Missing reset token"));
     }
     if let Some(password_error) = validate_password(&body.password) {
-        return respond(StatusCode::BAD_REQUEST, fail(400, &password_error));
+        return respond(StatusCode::BAD_REQUEST, fail(&password_error));
     }
     // Any failure to find a usable unexpired token reads the same.
     let row: Option<(i32, String, Option<DateTime<Utc>>)> =
@@ -393,13 +393,13 @@ pub async fn reset_password(State(state): State<AppState>, body: Bytes) -> Respo
     let Some((id, email, expiry)) = row else {
         return respond(
             StatusCode::BAD_REQUEST,
-            fail(400, "Invalid or expired reset link"),
+            fail("Invalid or expired reset link"),
         );
     };
     if expiry.is_none_or(|e| e < Utc::now()) {
         return respond(
             StatusCode::BAD_REQUEST,
-            fail(400, "Invalid or expired reset link"),
+            fail("Invalid or expired reset link"),
         );
     }
     if let Err(err) = sqlx::query(
@@ -438,20 +438,20 @@ pub async fn login(State(state): State<AppState>, body: Bytes) -> Response {
         _ => {
             return respond(
                 StatusCode::UNAUTHORIZED,
-                fail(401, "Invalid email or password"),
+                fail("Invalid email or password"),
             )
         }
     };
     if !verify_password(&body.password, &stored_hash) {
         return respond(
             StatusCode::UNAUTHORIZED,
-            fail(401, "Invalid email or password"),
+            fail("Invalid email or password"),
         );
     }
     if state.cfg.email_verification_required && !verified {
         return respond(
             StatusCode::FORBIDDEN,
-            fail(403, "Please verify your email before logging in."),
+            fail("Please verify your email before logging in."),
         );
     }
     // Trusted device? Skip 2FA.
@@ -520,7 +520,7 @@ pub async fn verify_login(State(state): State<AppState>, body: Bytes) -> Respons
         Ok(None) => {
             return respond(
                 StatusCode::BAD_REQUEST,
-                fail(400, "Invalid or expired code"),
+                fail("Invalid or expired code"),
             );
         }
         Err(err) => return respond_500("Verify Login Error", err, false),
@@ -530,7 +530,7 @@ pub async fn verify_login(State(state): State<AppState>, body: Bytes) -> Respons
     if used || Utc::now() > expires_at || attempts >= 5 {
         return respond(
             StatusCode::BAD_REQUEST,
-            fail(400, "Invalid or expired code"),
+            fail("Invalid or expired code"),
         );
     }
     if !bool::from(code.as_bytes().ct_eq(body.code.as_bytes())) {
@@ -540,7 +540,7 @@ pub async fn verify_login(State(state): State<AppState>, body: Bytes) -> Respons
             .await;
         return respond(
             StatusCode::BAD_REQUEST,
-            fail(400, "Invalid or expired code"),
+            fail("Invalid or expired code"),
         );
     }
     if let Err(err) = sqlx::query("UPDATE login_codes SET used = true WHERE token = $1")
@@ -586,7 +586,7 @@ pub async fn resend_login_code(State(state): State<AppState>, body: Bytes) -> Re
         Ok(None) => {
             return respond(
                 StatusCode::BAD_REQUEST,
-                fail(400, "Invalid or expired code"),
+                fail("Invalid or expired code"),
             );
         }
         Err(err) => return respond_500("Resend Code Error", err, false),
@@ -594,13 +594,13 @@ pub async fn resend_login_code(State(state): State<AppState>, body: Bytes) -> Re
     if used || Utc::now() > expires_at {
         return respond(
             StatusCode::BAD_REQUEST,
-            fail(400, "Invalid or expired code"),
+            fail("Invalid or expired code"),
         );
     }
     if resends >= 3 {
         return respond(
             StatusCode::TOO_MANY_REQUESTS,
-            fail(429, "Too many resend attempts"),
+            fail("Too many resend attempts"),
         );
     }
     let code = random_code(&state.cfg.env);
@@ -637,11 +637,11 @@ pub async fn change_password(
     if !verify_password(&body.current_password, &user.password) {
         return respond(
             StatusCode::UNAUTHORIZED,
-            fail(401, "Current password is incorrect"),
+            fail("Current password is incorrect"),
         );
     }
     if let Some(password_error) = validate_password(&body.new_password) {
-        return respond(StatusCode::BAD_REQUEST, fail(400, &password_error));
+        return respond(StatusCode::BAD_REQUEST, fail(&password_error));
     }
     if let Err(err) =
         sqlx::query("UPDATE users SET password = $1, must_change_password = false WHERE id = $2")

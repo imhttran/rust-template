@@ -59,7 +59,7 @@ async fn run_set_role(args: &[String]) -> Result<(), String> {
             backend::roles::ROLES.join("|")
         )
     };
-    if args.len() != 2 || backend::roles::role_index(&args[1]).is_none() {
+    if args.len() != 2 {
         return Err(usage());
     }
     let (email, role) = (&args[0], &args[1]);

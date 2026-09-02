@@ -17,7 +17,7 @@ use crate::validators::{
 
 // Field names match the Postgres columns; serde's camelCase rename produces
 // the wire format. Nullable columns are Option, matching Go's *string.
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Profile {
     pub id: i32,

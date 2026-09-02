@@ -12,7 +12,6 @@ use crate::mail::{self, token_link};
 use crate::state::AppState;
 
 // Prisma's P2025 (record not found in an update) as a sentinel.
-#[derive(Debug)]
 pub enum QueueError {
     NotFound,
     Db(sqlx::Error),
@@ -130,7 +129,7 @@ pub async fn process_email_queue(state: &AppState, take: i32) -> usize {
         }
     };
     for (id, to, subject, body, attempts) in &jobs {
-        match mail::send_mail(&state.cfg, &to, &subject, &body).await {
+        match mail::send_mail(&state.cfg, to, subject, body).await {
             Err(err) => {
                 let attempts = attempts + 1;
                 let status = if attempts >= state.cfg.max_attempts {

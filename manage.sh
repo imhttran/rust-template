@@ -19,9 +19,8 @@ PORT_FRONTEND=3000
 BACKEND_START_TRIES=120
 FRONTEND_START_TRIES=20
 
-# Service logs land at $LOG_PREFIX-<dir>.log in $LOG_DIR.
-LOG_DIR=/tmp
-LOG_PREFIX=rust-template
+# Service logs land at $LOG_BASE-<dir>.log.
+LOG_BASE=/tmp/rust-template
 
 # ---- database ----
 
@@ -63,7 +62,7 @@ start_service() {
     return 0
   fi
   echo "Starting $name on :$port ..."
-  (cd "$ROOT_DIR/$dir" && "$@" > "$LOG_DIR/$LOG_PREFIX-$dir.log" 2>&1 &)
+  (cd "$ROOT_DIR/$dir" && "$@" > "$LOG_BASE-$dir.log" 2>&1 &)
   wait_for_port "$port" "$name" "$tries" || return 1
   # PID of the actual listening process (cargo run's child binary / next dev).
   local pid
@@ -82,7 +81,7 @@ start_backend() {
     return 1
   fi
   if ! start_service "Backend" backend "$PORT_BACKEND" "$BACKEND_START_TRIES" cargo run; then
-    echo "→ see $LOG_DIR/$LOG_PREFIX-backend.log"
+    echo "→ see $LOG_BASE-backend.log"
     return 1
   fi
 }
@@ -113,7 +112,7 @@ start_all() {
   start_backend || return 1
   start_service "Frontend" frontend "$PORT_FRONTEND" "$FRONTEND_START_TRIES" npm run dev
   echo -e "${GREEN}Backend: http://localhost:$PORT_BACKEND  Frontend: http://localhost:$PORT_FRONTEND${NC}"
-  echo "Logs: $LOG_DIR/$LOG_PREFIX-backend.log, $LOG_DIR/$LOG_PREFIX-frontend.log"
+  echo "Logs: $LOG_BASE-backend.log, $LOG_BASE-frontend.log"
 }
 
 stop_all() {
@@ -195,9 +194,9 @@ view_logs() {
   echo "  a) Both"
   read -r -p "Choose: " which
   case "$which" in
-    b) tail -f "$LOG_DIR/$LOG_PREFIX-backend.log" ;;
-    f) tail -f "$LOG_DIR/$LOG_PREFIX-frontend.log" ;;
-    a) tail -f "$LOG_DIR/$LOG_PREFIX-backend.log" "$LOG_DIR/$LOG_PREFIX-frontend.log" ;;
+    b) tail -f "$LOG_BASE-backend.log" ;;
+    f) tail -f "$LOG_BASE-frontend.log" ;;
+    a) tail -f "$LOG_BASE-backend.log" "$LOG_BASE-frontend.log" ;;
     *) echo -e "${YELLOW}Unknown option${NC}" ;;
   esac
 }

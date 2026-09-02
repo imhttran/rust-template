@@ -24,14 +24,14 @@ pub async fn list_users(State(state): State<AppState>, user: AuthUser) -> Respon
     }
     // Staff sees clients and other staff — admin accounts aren't theirs to
     // manage. Admin sees everyone.
-    let sql = if has_role(&user.role, "admin") {
-        "SELECT id, email, role, email_verified, created_at FROM users ORDER BY created_at ASC"
-            .to_string()
+    let filter = if has_role(&user.role, "admin") {
+        ""
     } else {
-        "SELECT id, email, role, email_verified, created_at FROM users \
-         WHERE role IN ('client', 'staff') ORDER BY created_at ASC"
-            .to_string()
+        " WHERE role IN ('client', 'staff')"
     };
+    let sql = format!(
+        "SELECT id, email, role, email_verified, created_at FROM users{filter} ORDER BY created_at ASC"
+    );
     let rows: Result<Vec<(i32, String, String, bool, DateTime<Utc>)>, _> =
         sqlx::query_as(&sql).fetch_all(&state.db).await;
     match rows {
@@ -67,29 +67,25 @@ pub async fn admin_create_user(
     }
     let body: CreateUserBody = decode(&body);
     if !validate_email(&body.email) {
-        return respond(StatusCode::BAD_REQUEST, fail(400, "Invalid email address"));
+        return respond(StatusCode::BAD_REQUEST, fail("Invalid email address"));
     }
     if let Some(password_error) = validate_password(&body.password) {
-        return respond(StatusCode::BAD_REQUEST, fail(400, &password_error));
+        return respond(StatusCode::BAD_REQUEST, fail(&password_error));
     }
-    let row: Result<Option<(i32, String, String, bool)>, _> = sqlx::query_as(
+    let row: Result<(i32, String, String, bool), _> = sqlx::query_as(
         "INSERT INTO users (email, password, email_verified, must_change_password)
          VALUES ($1, $2, true, true)
          RETURNING id, email, role, email_verified",
     )
     .bind(&body.email)
     .bind(hash_password(&body.password))
-    .fetch_optional(&state.db)
+    .fetch_one(&state.db)
     .await;
     let (id, email, role, verified) = match row {
-        Ok(Some(row)) => row,
-        Ok(None) => unreachable!("INSERT ... RETURNING yields a row or an error"),
+        Ok(row) => row,
         Err(err) => {
             if is_unique_violation(&err) {
-                return respond(
-                    StatusCode::BAD_REQUEST,
-                    fail(400, "Email is already registered"),
-                );
+                return respond(StatusCode::BAD_REQUEST, fail("Email is already registered"));
             }
             return respond_500("Admin Create User Error", err, true);
         }

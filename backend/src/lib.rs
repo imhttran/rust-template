@@ -69,6 +69,7 @@ pub fn fatal(context: &str, err: impl std::fmt::Display) -> ! {
 
 // ---- out-of-band role management (the set-role subcommand) ----
 
+// Debug: the integration test's .expect needs it.
 #[derive(Debug)]
 pub enum SetRoleError {
     InvalidRole,

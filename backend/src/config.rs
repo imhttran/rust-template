@@ -11,7 +11,6 @@ use std::path::Path;
 pub const DEFAULT_DATABASE_URL: &str =
     "postgres://postgres:postgres@localhost:5432/rust_template?sslmode=disable";
 
-#[derive(Debug, Clone)]
 pub struct Config {
     pub port: u16,
     pub database_url: String,
