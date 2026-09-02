@@ -10,7 +10,7 @@ import {
   type MouseEvent,
   type ReactEventHandler,
 } from "react";
-import { API_BASE, callApi } from "@/lib/api";
+import { API_BASE, callApi, renewSessionFrom } from "@/lib/api";
 import { ROLES, hasRole } from "@/lib/roles";
 import { PageHeader } from "@/components/PageHeader";
 import { PageFooter } from "@/components/PageFooter";
@@ -133,7 +133,6 @@ function ActionsCell({ actions }: { actions: TableAction[] }) {
 
 export default function DashboardPage() {
   const [me, setMe] = useState<MeUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [users, setUsers] = useState<UserRow[] | null>(null);
   const [usersFailed, setUsersFailed] = useState(false);
   // Sort column/direction + current page survive across fetches so a
@@ -151,6 +150,7 @@ export default function DashboardPage() {
       const response = await fetch(`${API_BASE}/api/users`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
+      renewSessionFrom(response);
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
       if (!data.users) throw new Error("No users in response");
@@ -170,7 +170,6 @@ export default function DashboardPage() {
         window.location.href = "/";
         return;
       }
-      setToken(stored);
 
       try {
         // notify=false: this is the page's own auto-load, not an action
@@ -246,21 +245,22 @@ export default function DashboardPage() {
     setPage(1);
   };
 
-  const withToken = useCallback(
-    (run: (authToken: string) => Promise<void>) => {
-      if (!token) return;
-      void run(token);
-    },
-    [token],
-  );
+  // Reads the stored token on every call (not a stale React state) so a
+  // renewed JWT from a previous response is used by the next one.
+  const withToken = useCallback((run: (authToken: string) => Promise<void>) => {
+    const authToken = localStorage.getItem("auth_token");
+    if (!authToken) return;
+    void run(authToken);
+  }, []);
 
   const handleAddUser = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!token) return;
+    const authToken = localStorage.getItem("auth_token");
+    if (!authToken) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     void (async () => {
-      const result = await callApi(token, "/api/users", "POST", {
+      const result = await callApi(authToken, "/api/users", "POST", {
         email: data.get("email"),
         password: data.get("password"),
       });
@@ -270,7 +270,7 @@ export default function DashboardPage() {
         setSortBy("email");
         setSortDir("asc");
         setPage(1);
-        await loadUsers(token);
+        await loadUsers(authToken);
       }
     })();
   };

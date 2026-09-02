@@ -1,9 +1,10 @@
 // Port of app.go's router, response helpers, and auth middleware.
 
 use axum::body::Bytes;
-use axum::extract::FromRequestParts;
+use axum::extract::{FromRequestParts, Request, State};
 use axum::http::request::Parts;
-use axum::http::{header, StatusCode};
+use axum::http::{header, HeaderValue, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
@@ -53,7 +54,37 @@ pub fn new_router(state: AppState) -> Router {
             "/api/users/{id}/reset-password",
             post(users::admin_reset_password),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        .layer(middleware::from_fn_with_state(state, maybe_renew_session))
+}
+
+// Sliding JWT sessions: whenever a valid token is past half its 10-minute
+// life, successful responses carry a fresh one (X-Renewed-Token) for the
+// client to persist. Active users slide forward; idle ones hit the hard
+// expiry (enforced by the extractor's exp check) and get bounced to login by
+// the frontend.
+async fn maybe_renew_session(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let token = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(' ').nth(1))
+        .unwrap_or("")
+        .to_string();
+    let mut response = next.run(request).await;
+    if !response.status().is_success() {
+        return response;
+    }
+    if let Some(renewed) = auth::renew_token_if_due(&token, &state.cfg.jwt_secret) {
+        if let Ok(value) = HeaderValue::from_str(&renewed) {
+            response.headers_mut().insert("X-Renewed-Token", value);
+        }
+    }
+    response
 }
 
 // ---- response helpers ----

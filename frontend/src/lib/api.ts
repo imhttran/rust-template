@@ -8,6 +8,15 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 type ApiResult = { message?: string; [key: string]: unknown };
 
+// Sliding sessions: every successful authed response may carry a fresh JWT
+// (X-Renewed-Token) once the current one is past half its 10-minute life —
+// persist it so active users never hit the hard expiry. Idle users do, and
+// the 403 handling below bounces them to login.
+export function renewSessionFrom(response: Response): void {
+  const renewed = response.headers.get("X-Renewed-Token");
+  if (renewed) localStorage.setItem("auth_token", renewed);
+}
+
 // Shared by signup and reset-password: alerts and returns false on the first
 // broken rule (mismatch, then strength), true if the password is good to submit.
 export function confirmedPasswordOrAlert(
@@ -102,6 +111,7 @@ export async function callApi<T extends ApiResult = ApiResult>(
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const result = (await response.json()) as T;
+    renewSessionFrom(response);
     if (notify) console.log(`[api] ${result.message}`);
     return response.ok ? result : false;
   } catch {

@@ -1,6 +1,8 @@
 # Features
 
-- **Auth** — JWT login, scrypt password hashing, email verification, password
+- **Auth** — JWT login with 10-minute sliding sessions (renewed past half-life
+  on every successful request; idle sessions hard-expire), scrypt password
+  hashing, email verification, password
   reset, resend-verification, self-service change-password, email-code 2FA on
   new devices (trusted devices skip it)
 - **RBAC** — `client` < `staff` < `admin` roles with role-gated routes;

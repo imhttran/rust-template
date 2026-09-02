@@ -10,7 +10,7 @@
 // run), so reruns against a dirty database still pass.
 
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{HeaderMap, Request, StatusCode};
 use axum::Router;
 use backend::config::Config;
 use backend::routes::new_router;
@@ -116,6 +116,18 @@ async fn do_json(
     token: &str,
     body: Option<Value>,
 ) -> (StatusCode, Value) {
+    let (status, _, body) = do_json_with_headers(router, method, path, token, body).await;
+    (status, body)
+}
+
+// Like do_json, but also returns the response headers (session-renewal test).
+async fn do_json_with_headers(
+    router: &Router,
+    method: &str,
+    path: &str,
+    token: &str,
+    body: Option<Value>,
+) -> (StatusCode, HeaderMap, Value) {
     let mut builder = Request::builder()
         .method(method)
         .uri(path)
@@ -130,6 +142,7 @@ async fn do_json(
         .await
         .expect("router is infallible");
     let status = response.status();
+    let headers = response.headers().clone();
     let bytes = response
         .into_body()
         .collect()
@@ -138,6 +151,7 @@ async fn do_json(
         .to_bytes();
     (
         status,
+        headers,
         serde_json::from_slice(&bytes).unwrap_or(Value::Null),
     )
 }
@@ -634,6 +648,57 @@ async fn dev_admin_seed() {
         .execute(&pool)
         .await;
     pool.close().await;
+}
+
+// Sliding sessions: a token deep into its life is renewed on successful use
+// (X-Renewed-Token), the renewed token is a normal bearer, a full-life token
+// is not renewed, and a hard-expired one is rejected.
+#[tokio::test]
+async fn session_slides_while_active() {
+    let Some(env) = new_test_env().await else {
+        return;
+    };
+    do_json(
+        &env.router,
+        "POST",
+        "/api/signup",
+        "",
+        Some(json!({ "email": &env.email, "password": &env.password })),
+    )
+    .await;
+
+    // 60 seconds left of the 10-minute window → renewed on use.
+    let aging = backend::auth::issue_token_with_ttl(&env.email, "test-secret", 60);
+    let (status, headers, _) =
+        do_json_with_headers(&env.router, "GET", "/api/me", &aging, None).await;
+    assert_eq!(status, StatusCode::OK, "aging token should still work");
+    let renewed = headers
+        .get("X-Renewed-Token")
+        .and_then(|v| v.to_str().ok())
+        .expect("aging token should be renewed")
+        .to_string();
+    assert_ne!(renewed, aging, "renewal must be a new token");
+
+    // The renewed token is a normal bearer.
+    let (status, _) = do_json(&env.router, "GET", "/api/me", &renewed, None).await;
+    assert_eq!(status, StatusCode::OK, "renewed token should work");
+
+    // A fresh (full-life) token is not renewed.
+    let fresh = backend::auth::issue_token(&env.email, "test-secret");
+    let (status, headers, _) =
+        do_json_with_headers(&env.router, "GET", "/api/me", &fresh, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        headers.get("X-Renewed-Token").is_none(),
+        "full-life token should not renew"
+    );
+
+    // Hard expiry: past the window, the token is rejected outright.
+    let expired = backend::auth::issue_token_with_ttl(&env.email, "test-secret", -60);
+    let (status, body) = do_json(&env.router, "GET", "/api/me", &expired, None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "expired token: {body}");
+
+    env.cleanup().await;
 }
 
 // Full 2FA flow: new-device login demands a code, wrong codes are rejected,

@@ -66,13 +66,18 @@ struct Claims {
     iat: u64,
 }
 
-// HS256, claim {email}, 1h expiry.
-pub fn issue_token(email: &str, secret: &str) -> String {
-    let now = Utc::now().timestamp() as u64;
+// Sessions expire SESSION_TTL_SECS after issue (the extractor enforces the
+// hard expiry); the router's middleware slides active sessions forward by
+// re-issuing past the half-life (see maybe_renew_session).
+pub const SESSION_TTL_SECS: i64 = 600; // 10 minutes
+const RENEW_THRESHOLD_SECS: u64 = 300; // half-life
+
+pub fn issue_token_with_ttl(email: &str, secret: &str, ttl_secs: i64) -> String {
+    let now = Utc::now().timestamp();
     let claims = Claims {
         email: email.to_string(),
-        exp: now + 3600,
-        iat: now,
+        exp: (now + ttl_secs) as u64,
+        iat: now as u64,
     };
     encode(
         &Header::new(Algorithm::HS256),
@@ -80,6 +85,11 @@ pub fn issue_token(email: &str, secret: &str) -> String {
         &EncodingKey::from_secret(secret.as_bytes()),
     )
     .expect("signing with a string secret can't fail")
+}
+
+// HS256, claim {email}, 10-minute expiry.
+pub fn issue_token(email: &str, secret: &str) -> String {
+    issue_token_with_ttl(email, secret, SESSION_TTL_SECS)
 }
 
 // Returns the email claim, or None on any failure (mirrors verifyToken).
@@ -104,6 +114,23 @@ pub fn verify_token(token: &str, secret: &str) -> Option<String> {
 
 pub fn random_token() -> String {
     hex::encode(random::<[u8; 32]>())
+}
+
+// Returns a fresh token when the current one is past its half-life, so an
+// active user's session slides forward instead of hard-expiring mid-use.
+// Expired or invalid tokens are never renewed.
+pub fn renew_token_if_due(token: &str, secret: &str) -> Option<String> {
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.leeway = 0;
+    let data = jsonwebtoken::decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &validation,
+    )
+    .ok()?;
+    let now = Utc::now().timestamp() as u64;
+    (data.claims.exp.saturating_sub(now) < RENEW_THRESHOLD_SECS)
+        .then(|| issue_token(&data.claims.email, secret))
 }
 
 // A 4-digit login code. In development it's always 1234 so testing doesn't
@@ -656,6 +683,20 @@ mod tests {
         let token = issue_token("a@b.c", "secret");
         assert_eq!(verify_token(&token, "secret").as_deref(), Some("a@b.c"));
         assert_eq!(verify_token(&token, "other"), None);
+    }
+
+    #[test]
+    fn renewal_only_past_half_life() {
+        // A fresh (full-life) token is not renewed...
+        let fresh = issue_token("a@b.c", "secret");
+        assert_eq!(renew_token_if_due(&fresh, "secret"), None);
+        // ...one deep into its life is...
+        let due = issue_token_with_ttl("a@b.c", "secret", 60);
+        let renewed = renew_token_if_due(&due, "secret").expect("due for renewal");
+        assert_eq!(verify_token(&renewed, "secret").as_deref(), Some("a@b.c"));
+        // ...and an expired one is dead, not renewable.
+        let expired = issue_token_with_ttl("a@b.c", "secret", -60);
+        assert_eq!(renew_token_if_due(&expired, "secret"), None);
     }
 
     #[test]
