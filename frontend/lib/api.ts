@@ -1,9 +1,9 @@
 import { validatePassword } from "./validators";
 
-// Same-origin by default: the frontend's own server proxies /api/* to the Go
-// API (see next.config.ts), so the browser never talks to the API directly.
+// Same-origin by default: the frontend's own server proxies /api/* to the
+// Rust API (see next.config.ts), so the browser never talks to the API directly.
 // NEXT_PUBLIC_API_URL overrides this for a split-domain deployment that calls
-// the Go API directly (CORS must then be enabled on the Go side).
+// the Rust API directly (CORS must then be enabled on the API side).
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 type ApiResult = { message?: string; [key: string]: unknown };

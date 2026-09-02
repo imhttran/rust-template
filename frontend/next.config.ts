@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   // rooted at the frontend directory instead of letting Next infer one.
   outputFileTracingRoot: path.join(import.meta.dirname),
   // All browser traffic targets this server only: /api/* is proxied server-side
-  // to the Go API (API_URL, default http://localhost:8080). The Go API is
+  // to the Rust API (API_URL, default http://localhost:8080). The Rust API is
   // therefore never exposed to the browser directly — same-origin fetches, no CORS.
   async rewrites() {
     return [

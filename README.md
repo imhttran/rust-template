@@ -1,7 +1,7 @@
-# go-template
+# rust-template
 
-Full-stack auth template: **Next.js → Go API → PostgreSQL**. The browser only
-ever talks to Next.js; the Go API is proxied server-side and never exposed
+Full-stack auth template: **Next.js → Rust API → PostgreSQL**. The browser only
+ever talks to Next.js; the Rust API is proxied server-side and never exposed
 directly.
 
 ```
@@ -9,7 +9,7 @@ Browser
    ↓
 Next.js        frontend/  → :3000   React UI, routing, SSR/static gen, server components
    ↓
-Go API         backend/   → :8080   chi + pgx + JWT + scrypt + email worker
+Rust API       backend/   → :8080   axum + sqlx + JWT + scrypt + email worker
    ↓
 PostgreSQL     migrations apply on boot
 ```
@@ -20,10 +20,10 @@ PostgreSQL     migrations apply on boot
 ./manage.sh       # → [7] First-Time Setup, then → [1] Start All
 ```
 
-Needs Go 1.22+, Node 20+, and a running PostgreSQL (option 1 refuses to start
-if it's down). Dev admin: **admin@mail.com** / **Password1234!** — first login
-from a new browser asks for a 2FA code; in development it's always `1234`, and
-the browser is trusted afterwards.
+Needs Rust (stable, via rustup), Node 20+, and a running PostgreSQL (option 1
+refuses to start if it's down). Dev admin: **admin@mail.com** /
+**Password1234!** — first login from a new browser asks for a 2FA code; in
+development it's always `1234`, and the browser is trusted afterwards.
 
 Useful menu options beyond setup/start: [5] status, [6] tests, [9] reset DB,
 [10] tail logs, [11] re-seed (drop DB + restart backend).
@@ -32,6 +32,7 @@ Useful menu options beyond setup/start: [5] status, [6] tests, [9] reset DB,
 
 - **[docs/FEATURE.md](docs/FEATURE.md)** — what this build does
 - **[docs/DATABASE.md](docs/DATABASE.md)** — install Postgres, schema, reset, tests
+- **[docs/RUST_MIGRATION.md](docs/RUST_MIGRATION.md)** — how the backend moved from Go to Rust
 - **`.env.example`** — every config variable
 
 ## Tests
@@ -44,13 +45,13 @@ tests need `TEST_DATABASE_URL` (see docs/DATABASE.md).
 `client` < `staff` < `admin`. Grant via CLI only (no self-service promotion):
 
 ```bash
-cd backend && go run ./cmd/set-role you@email.com admin
+cd backend && cargo run -- set-role you@email.com admin
 # or: ./manage.sh → [8]
 ```
 
 ## API
 
-19 endpoints under `/api/*` — see `backend/app.go` (`routes()`):
+19 endpoints under `/api/*` — see `backend/src/routes.rs` (`new_router()`):
 
 - **Public auth** (8): signup, verify, resend-verification, forgot-password,
   reset-password, login, login/verify (2FA code), login/resend (2FA code)

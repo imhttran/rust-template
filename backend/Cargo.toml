@@ -1,0 +1,40 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+
+# Edition 2021 on purpose: load_env_files calls env::set_var early in main
+# (safe there); edition 2024 makes that an unsafe call we don't need.
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+jsonwebtoken = "9"
+scrypt = "0.11"
+subtle = "2"
+hex = "0.4"
+rand = "0.9"
+regex = "1"
+url = "2"
+lettre = { version = "0.11", default-features = false, features = [
+    "builder",
+    "smtp-transport",
+    "pool",
+    "hostname",
+    "tokio1",
+    "tokio1-rustls-tls",
+] }
+
+[dev-dependencies]
+# Integration tests drive the real router with tower's oneshot (no sockets).
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.dev.package."*"]
+# scrypt and friends are painfully slow in debug builds; optimize dependencies
+# even in dev so login hashing stays fast while our crate compiles quickly.
+opt-level = 2
