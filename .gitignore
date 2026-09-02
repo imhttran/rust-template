@@ -1,0 +1,15 @@
+node_modules/
+.next/
+*.pid
+.playwright-mcp/
+
+# macOS
+.DS_Store
+
+# Compiled backend binary
+backend/app
+
+# Personal env config (template stays tracked: .env.example)
+.env
+.env.*
+!.env.example
